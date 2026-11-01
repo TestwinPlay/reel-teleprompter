@@ -227,6 +227,11 @@ Camera access needs HTTPS (or localhost); workers.dev and custom domains are HTT
   added, script preload via URL fragment, phone-remote line hidden when no relay
   answers, landing link points at `/app.html` so plain static servers work, account ID
   removed from `wrangler.jsonc`. Licensed MIT OR Apache-2.0 with third-party notices.
+- 2026-11-01: Published at https://github.com/TestwinPlay/reel-teleprompter. Measured
+  from a fresh clone: skill folder layout as the Skills CLI expects; app served with
+  `python3 -m http.server` returns 200 for pages and noise-removal files; script
+  preload works; RNNoise loads; phone-remote line stays hidden without the relay.
+  Not yet run: `npx skills add` itself.
 
 ## License
 
