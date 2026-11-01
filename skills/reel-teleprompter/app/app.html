@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reel Teleprompter – record</title>
+<meta name="description" content="Free teleprompter that records Instagram Reels from your laptop webcam in 9:16. Nothing is uploaded.">
+<meta name="robots" content="noindex">
+<style>
+body{display:flex;height:100vh;margin:0;background:#0b0b0c;color:#f5f5f7;font:14px -apple-system,BlinkMacSystemFont,sans-serif;overflow:hidden}
+#stage{flex:1;display:flex;align-items:center;justify-content:center;min-width:0;padding:16px;box-sizing:border-box}
+#frame{position:relative;background:#000;border-radius:14px;overflow:hidden}
+#view{position:absolute;inset:0;width:100%;height:100%}
+#scrmap{width:100%;border-radius:8px;background:#000;cursor:grab;touch-action:none}
+.src{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+#safe{position:absolute;top:14%;bottom:35%;left:6%;right:6%;border:2px dashed rgba(255,214,10,.9);box-shadow:0 0 0 9999px rgba(255,59,48,.2);pointer-events:none}
+#safe span{position:absolute;bottom:4px;left:6px;font-size:11px;color:#ffd60a}
+#prompt{position:absolute;top:0;left:0;right:0;height:42%;overflow:hidden;background:rgba(0,0,0,.6)}
+#marker{position:absolute;left:0;right:0;top:30%;background:rgba(255,214,10,.18);border-left:4px solid #ffd60a}
+#prompt-text{position:absolute;left:0;right:0;top:0;padding:0 6%;color:#fff;font-size:30px;font-weight:600;line-height:1.4;white-space:pre-wrap;text-shadow:0 1px 3px #000;will-change:transform}
+#count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:700;color:#fff;text-shadow:0 2px 12px #000;pointer-events:none}
+#review{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;gap:8px;padding:8px;box-sizing:border-box}
+#review video{flex:1;min-height:0;width:100%;object-fit:contain}
+[hidden]{display:none!important}
+#panel{width:300px;padding:20px;box-sizing:border-box;background:#1c1c1e;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+h1{font-size:17px;margin:0}
+label{display:flex;justify-content:space-between;color:#8e8e93;font-size:12px}
+label.check{justify-content:flex-start;align-items:center;gap:8px;color:#f5f5f7;font-size:13px}
+textarea{flex:none;height:160px;min-height:80px;background:#2c2c2e;color:#fff;border:0;border-radius:10px;padding:10px;font:inherit;resize:vertical}
+input[type=range]{width:100%}
+select{flex:1;min-width:0;background:#2c2c2e;color:#fff;border:0;border-radius:9px;padding:8px;font:inherit}
+.row{display:flex;gap:8px}
+button{flex:1;padding:9px;border:0;border-radius:9px;background:#2c2c2e;color:#fff;font:inherit;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+button.on{background:#0a84ff}
+#rec{background:#ff3b30;font-weight:600}
+#rec.live{background:#fff;color:#ff3b30}
+.meter{height:6px;background:#2c2c2e;border-radius:3px;overflow:hidden}
+#level{height:100%;width:0;background:#30d158}
+#status{color:#8e8e93;min-height:1em}
+#err{color:#ff453a;min-height:1em}
+.note{color:#636366;font-size:12px;margin:0}
+#remote{color:#8e8e93}
+#remote b{color:#0a84ff;user-select:all}
+#warn{color:#ffd60a;font-size:12px}
+h1 a{color:inherit;text-decoration:none}
+@media (max-width:800px){body{flex-direction:column;height:auto;overflow:auto}#stage{flex:none;height:70vh}#panel{width:100%}}
+</style>
+</head>
+<body>
+<main id="stage">
+  <div id="frame">
+    <canvas id="view"></canvas>
+    <video id="cam" class="src" autoplay muted playsinline></video>
+    <video id="scr" class="src" autoplay muted playsinline></video>
+    <div id="safe" hidden><span>Instagram safe zone</span></div>
+    <div id="prompt"><div id="marker"></div><div id="prompt-text"></div></div>
+    <div id="count" hidden></div>
+    <div id="review" hidden>
+      <video controls playsinline></video>
+      <button id="closereview">Back to camera</button>
+    </div>
+  </div>
+</main>
+<aside id="panel">
+  <h1><a href="/">Reel Teleprompter</a></h1>
+  <label>Script</label>
+  <div class="row">
+    <select id="scripts"></select>
+    <button id="newscript">New</button>
+    <button id="delscript">Delete</button>
+  </div>
+  <textarea id="script" placeholder="Paste your script here. The first line becomes its name."></textarea>
+  <div class="row">
+    <button id="rec" disabled>Record</button>
+    <button id="pauserec" disabled>Pause rec</button>
+    <button id="dl" disabled>Download</button>
+  </div>
+  <div id="status"></div>
+  <div id="err"></div>
+  <div id="warn"></div>
+  <label>Format <span id="outinfo">1080×1920</span></label>
+  <div class="row">
+    <button data-fmt="9:16" class="on">9:16 Reels</button>
+    <button data-fmt="4:5">4:5 Feed</button>
+  </div>
+  <div class="row">
+    <button data-fmt="1:1">1:1</button>
+    <button data-fmt="16:9">16:9</button>
+  </div>
+  <label>Camera</label>
+  <select id="camsel"></select>
+  <label class="check"><input type="checkbox" id="mirror" checked> Mirror (selfie view)</label>
+  <label>Screen recording</label>
+  <div class="row">
+    <button id="addscreen">Add screen / window</button>
+    <button id="rmscreen" disabled>Remove</button>
+  </div>
+  <select id="layoutsel" aria-label="Layout">
+    <option value="split">Split: screen + me</option>
+    <option value="splitflip">Split: me + screen</option>
+    <option value="bubble">Screen + face bubble</option>
+    <option value="cam">Me only</option>
+  </select>
+  <label class="check"><input type="checkbox" id="autosplit" checked> Auto split (match screen shape, no gap)</label>
+  <label>Screen share of frame <span id="splitv"></span></label>
+  <input id="split" type="range" min="30" max="75" value="55">
+  <label class="check"><input type="checkbox" id="fillscr"> Bubble layout: fill frame (crops screen)</label>
+  <div id="mapwrap" hidden>
+    <label>Recorded part of your screen (drag the box to move it)</label>
+    <canvas id="scrmap"></canvas>
+  </div>
+  <button id="float">Floating preview window</button>
+  <label>Draw on recording</label>
+  <div class="row">
+    <button data-tool="pen">Pen</button>
+    <button data-tool="hl">Highlight</button>
+  </div>
+  <div class="row">
+    <button data-tool="circle">Circle</button>
+    <button data-tool="arrow">Arrow</button>
+    <button id="clearann">Clear</button>
+  </div>
+  <label class="check"><input type="checkbox" id="fade" checked> Drawings fade after 3 s</label>
+  <label>Microphone</label>
+  <select id="mic"></select>
+  <label>Mic boost <span id="boostv"></span></label>
+  <input id="boost" type="range" min="0" max="24" value="12">
+  <div class="meter"><div id="level"></div></div>
+  <label class="check"><input type="checkbox" id="clean" checked> Noise removal (AI: fan, AC, hiss)</label>
+  <label>Font size <span id="fontv"></span></label>
+  <input id="font" type="range" min="16" max="64" value="30">
+  <label>Scroll speed (px/s)</label>
+  <input id="speed" type="range" min="10" max="150" value="40">
+  <label>Background opacity</label>
+  <input id="bg" type="range" min="0" max="100" value="60">
+  <label class="check"><input type="checkbox" id="mark" checked> Highlight reading line</label>
+  <label class="check"><input type="checkbox" id="safezone"> Instagram safe zone (9:16)</label>
+  <div class="row">
+    <button id="play">Start prompter</button>
+    <button id="reset">Reset</button>
+  </div>
+  <div class="row">
+    <button id="back">▲ Back</button>
+    <button id="ahead">▼ Ahead</button>
+  </div>
+  <label class="check"><input type="checkbox" id="cd" checked> 3-2-1 countdown</label>
+  <div id="remote" class="note"></div>
+  <p class="note">Keys: Space play/pause text · ↑/↓ one line · ←/→ or PageUp/PageDown two lines (presenter clicker) · R record/stop · P pause/resume recording. Trackpad scroll over the text also moves it. Prompter text, safe zone and highlight are not recorded. Output is MP4 when the browser supports it, otherwise WebM. Recording happens on your device; video and scripts are never uploaded.</p>
+</aside>
+<script>
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), frame = $('#frame'), cam = $('#cam');
+const promptBox = $('#prompt'), promptText = $('#prompt-text'), marker = $('#marker');
+const safe = $('#safe'), countEl = $('#count'), review = $('#review'), reviewVid = $('#review video');
+const scriptEl = $('#script'), scriptSel = $('#scripts');
+const fontEl = $('#font'), speedEl = $('#speed'), bgEl = $('#bg');
+const camEl = $('#camsel'), micEl = $('#mic'), level = $('#level'), cleanEl = $('#clean'), boostEl = $('#boost');
+const mirrorEl = $('#mirror'), markEl = $('#mark'), safeEl = $('#safezone'), cdEl = $('#cd');
+const playBtn = $('#play'), recBtn = $('#rec'), pauseBtn = $('#pauserec'), dlBtn = $('#dl');
+const statusEl = $('#status'), errEl = $('#err');
+const view = $('#view'), vctx = view.getContext('2d'), scr = $('#scr');
+const layoutEl = $('#layoutsel'), splitEl = $('#split'), fillEl = $('#fillscr'), rmScreenBtn = $('#rmscreen');
+const autoEl = $('#autosplit'), fadeEl = $('#fade');
+const FORMATS = { '9:16': [1080, 1920], '4:5': [1080, 1350], '1:1': [1080, 1080], '16:9': [1920, 1080] };
+let fmt = '9:16', [outW, outH] = FORMATS[fmt];
+let stream = null, screenStream = null, recorder = null, chunks = [];
+let pos = 0, lastT = 0, scrolling = false, startedAt = 0, elapsed = 0, timerId = 0, countTimer = 0, dlUrl = '';
+let actx = null, analyser = null, micNode = null;
+const buf = new Uint8Array(1024);
+const isRecording = () => recorder && recorder.state !== 'inactive';
+
+// ---- scripts (kept in this browser only) ----
+let scripts = [], cur = 0;
+try { const s = JSON.parse(localStorage.getItem('scripts')); scripts = s.list.map(String); cur = s.cur | 0; } catch (e) {}
+if (!scripts.length) {
+  let old = '';
+  try { old = localStorage.getItem('script') || ''; } catch (e) {} // older single-script version
+  scripts = [old];
+}
+cur = Math.min(Math.max(0, cur), scripts.length - 1);
+// app.html#script=<url-encoded text> adds that script (used by the agent skill).
+// The fragment never reaches the server; it is removed from the address bar after reading.
+{
+  const m = location.hash.match(/^#script=(.*)$/s);
+  if (m) {
+    let text = '';
+    try { text = decodeURIComponent(m[1]); } catch (e) {}
+    if (text.trim()) {
+      if (scripts.length === 1 && !scripts[0].trim()) scripts[0] = text; else scripts.push(text);
+      cur = scripts.indexOf(text);
+      try { localStorage.setItem('scripts', JSON.stringify({ list: scripts, cur })); } catch (e) {}
+    }
+    history.replaceState(null, '', location.pathname);
+  }
+}
+const title = t => (t.trim().split('\n')[0] || 'Untitled').slice(0, 30);
+const saveScripts = () => { try { localStorage.setItem('scripts', JSON.stringify({ list: scripts, cur })); } catch (e) {} };
+const showText = () => { promptText.textContent = scriptEl.value || 'Paste your script on the right.'; };
+function renderScripts() {
+  scriptSel.innerHTML = '';
+  scripts.forEach((t, i) => scriptSel.add(new Option(`${i + 1}. ${title(t)}`, i, false, i === cur)));
+  scriptEl.value = scripts[cur];
+  showText();
+}
+scriptEl.addEventListener('input', () => {
+  scripts[cur] = scriptEl.value;
+  scriptSel.options[cur].text = `${cur + 1}. ${title(scriptEl.value)}`;
+  saveScripts();
+  showText();
+});
+scriptSel.onchange = () => { cur = +scriptSel.value; saveScripts(); renderScripts(); resetPrompt(); };
+$('#newscript').onclick = () => {
+  scripts.push('');
+  cur = scripts.length - 1;
+  saveScripts(); renderScripts(); resetPrompt();
+  scriptEl.focus();
+};
+$('#delscript').onclick = () => {
+  if (!confirm(`Delete "${title(scripts[cur])}"?`)) return;
+  scripts.splice(cur, 1);
+  if (!scripts.length) scripts = [''];
+  cur = Math.min(cur, scripts.length - 1);
+  saveScripts(); renderScripts(); resetPrompt();
+};
+
+// ---- prompter ----
+const lineStep = () => fontEl.value * 1.4; // one line at current font size
+function setScrolling(v) {
+  scrolling = v;
+  playBtn.textContent = v ? 'Pause' : 'Start prompter';
+}
+function resetPrompt() {
+  pos = promptBox.clientHeight * 0.3; // first line sits on the reading line
+  setScrolling(false);
+}
+// positive = go back (text moves down), negative = skip ahead
+function nudge(px) {
+  pos = Math.min(promptBox.clientHeight, Math.max(-promptText.offsetHeight, pos + px));
+}
+function tick(t) {
+  const dt = lastT ? (t - lastT) / 1000 : 0;
+  lastT = t;
+  if (scrolling) {
+    pos -= speedEl.value * dt;
+    if (pos < -promptText.offsetHeight) setScrolling(false); // reached end
+  }
+  promptText.style.transform = `translateY(${pos}px)`;
+  if (analyser) {
+    analyser.getByteTimeDomainData(buf);
+    let peak = 0;
+    for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+    level.style.width = Math.min(100, peak * 1.2) + '%';
+    level.style.background = peak > 115 ? '#ff453a' : peak > 70 ? '#ffd60a' : '#30d158';
+  }
+  if (pipRec) pipRec.textContent = recBtn.textContent;
+  requestAnimationFrame(tick);
+}
+playBtn.onclick = () => {
+  if (pos < -promptText.offsetHeight) resetPrompt(); // restart after end
+  setScrolling(!scrolling);
+};
+$('#reset').onclick = resetPrompt;
+promptBox.addEventListener('wheel', e => { e.preventDefault(); nudge(-e.deltaY); }, { passive: false });
+
+// ---- layout and overlays ----
+function layout() {
+  const sw = stage.clientWidth - 32, sh = stage.clientHeight - 32, r = outW / outH;
+  let w = sw, h = sw / r;
+  if (h > sh) { h = sh; w = sh * r; }
+  const oldH = promptBox.clientHeight;
+  frame.style.width = w + 'px';
+  frame.style.height = h + 'px';
+  if (oldH) pos *= promptBox.clientHeight / oldH; // keep place in script on window resize
+  safe.hidden = !(safeEl.checked && fmt === '9:16');
+}
+window.addEventListener('resize', layout);
+document.querySelectorAll('[data-fmt]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-fmt]').forEach(x => x.classList.toggle('on', x === b));
+  fmt = b.dataset.fmt;
+  [outW, outH] = FORMATS[fmt];
+  view.width = outW;
+  view.height = outH;
+  $('#outinfo').textContent = `${outW}×${outH}`;
+  layout();
+  resetPrompt();
+});
+fontEl.oninput = () => {
+  promptText.style.fontSize = fontEl.value + 'px';
+  marker.style.height = lineStep() + 'px';
+  $('#fontv').textContent = fontEl.value;
+};
+bgEl.oninput = () => { promptBox.style.background = `rgba(0,0,0,${bgEl.value / 100})`; };
+markEl.onchange = () => { marker.hidden = !markEl.checked; };
+safeEl.onchange = layout;
+$('#closereview').onclick = () => { reviewVid.pause(); review.hidden = true; };
+
+// ---- camera and mic ----
+const VIDEO = id => ({ ...(id ? { deviceId: { exact: id } } : { facingMode: 'user' }), width: { ideal: 1920 }, height: { ideal: 1080 } });
+// browsers default to call-style processing (echo cancel, noise gate, auto gain) that
+// muddies a good mic; off = raw signal like QuickTime
+const AUDIO = id => ({
+  ...(id ? { deviceId: { exact: id } } : {}),
+  echoCancellation: false,
+  noiseSuppression: false, // replaced by RNNoise below, which keeps the voice clearer
+  autoGainControl: false,
+  sampleRate: 48000,
+});
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO(), audio: AUDIO() });
+    cam.srcObject = new MediaStream(stream.getVideoTracks());
+    await cam.play();
+    recBtn.disabled = false;
+    hookMeter();
+    await listDevices();
+  } catch (e) {
+    errEl.textContent = 'Camera or mic blocked: ' + e.message;
+  }
+}
+function fill(sel, devs, curId) {
+  sel.innerHTML = '';
+  devs.forEach((d, i) => sel.add(new Option(d.label || `Device ${i + 1}`, d.deviceId, false, d.deviceId === curId)));
+}
+// labels only appear after permission, so list after getUserMedia
+async function listDevices() {
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const id = kind => stream.getTracks().find(t => t.kind === kind)?.getSettings().deviceId;
+  fill(camEl, devs.filter(d => d.kind === 'videoinput'), id('video'));
+  fill(micEl, devs.filter(d => d.kind === 'audioinput'), id('audio'));
+}
+async function switchDevice(kind, deviceId) {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia(
+      kind === 'video' ? { video: VIDEO(deviceId) } : { audio: AUDIO(deviceId) });
+    const track = s.getTracks()[0];
+    stream.getTracks().filter(t => t.kind === kind).forEach(t => { stream.removeTrack(t); t.stop(); });
+    stream.addTrack(track);
+    if (kind === 'video') { cam.srcObject = new MediaStream([track]); await cam.play(); }
+    else hookMeter();
+    errEl.textContent = '';
+  } catch (e) {
+    errEl.textContent = 'Switch failed: ' + e.message;
+    listDevices();
+  }
+}
+camEl.onchange = () => switchDevice('video', camEl.value);
+micEl.onchange = () => switchDevice('audio', micEl.value);
+cleanEl.onchange = () => wireMic();
+navigator.mediaDevices.addEventListener('devicechange', () => { if (stream) listDevices(); });
+
+// mic -> [RNNoise] -> high-pass 80 Hz -> boost -> compressor -> limiter -> (meter, recording).
+// Raw capture is quiet with auto gain off; boost + limiter make it loud without clipping.
+// Never connected to speakers (no feedback).
+let boost = null, processed = null, hp = null, rnnoise = null;
+const setBoost = () => {
+  $('#boostv').textContent = `+${boostEl.value} dB`;
+  if (boost) boost.gain.value = 10 ** (boostEl.value / 20);
+};
+function wireMic() {
+  if (!micNode) return;
+  micNode.disconnect();
+  micNode.connect(cleanEl.checked && rnnoise ? rnnoise : hp);
+}
+// RNNoise (xiph/rnnoise via @sapphi-red/web-noise-suppressor, vendored in /vendor/noise)
+async function loadNoiseRemoval() {
+  try {
+    const m = await import('/vendor/noise/index.js');
+    const wasmBinary = await m.loadRnnoise({ url: '/vendor/noise/rnnoise.wasm', simdUrl: '/vendor/noise/rnnoise_simd.wasm' });
+    await actx.audioWorklet.addModule('/vendor/noise/rnnoiseWorklet.js');
+    rnnoise = new m.RnnoiseWorkletNode(actx, { wasmBinary, maxChannels: 1 });
+    rnnoise.connect(hp);
+    wireMic();
+  } catch (e) {
+    $('#warn').textContent = 'AI noise removal unavailable in this browser: ' + e.message;
+  }
+}
+function hookMeter() {
+  const track = stream.getAudioTracks()[0];
+  if (!track) return;
+  try {
+    if (!actx) {
+      const ctx = new AudioContext({ sampleRate: 48000 }); // RNNoise works on 48 kHz frames
+      const an = Object.assign(ctx.createAnalyser(), { fftSize: 1024 });
+      const highpass = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 80 }); // rumble, desk knocks
+      const gain = ctx.createGain();
+      const comp = new DynamicsCompressorNode(ctx, { threshold: -24, knee: 12, ratio: 3, attack: 0.005, release: 0.2 });
+      const limiter = new DynamicsCompressorNode(ctx, { threshold: -2, knee: 0, ratio: 20, attack: 0.001, release: 0.1 });
+      const dest = ctx.createMediaStreamDestination();
+      highpass.connect(gain).connect(comp).connect(limiter);
+      limiter.connect(an);
+      limiter.connect(dest);
+      ctx.createMediaStreamSource(new MediaStream([track])); // throws here if the browser can't feed this context
+      actx = ctx; analyser = an; hp = highpass; boost = gain; processed = dest;
+      setBoost();
+      loadNoiseRemoval();
+    }
+    if (micNode) micNode.disconnect();
+    micNode = actx.createMediaStreamSource(new MediaStream([track]));
+    wireMic();
+  } catch (e) {
+    $('#warn').textContent = 'Audio processing unavailable; recording raw mic. ' + e.message;
+  }
+}
+boostEl.oninput = setBoost;
+// browsers start audio suspended until the first click
+document.addEventListener('pointerdown', () => { if (actx && actx.state === 'suspended') actx.resume(); });
+
+// ---- compositor: camera and optional screen drawn into one canvas ----
+// The canvas is both the preview and what gets recorded, so they always match.
+// focus 0..1 picks which part of a cropped source stays in view (0.5 = centre)
+let scrFocus = [0.5, 0.5], lastCrop = null;
+function drawSource(v, x, y, w, h, fill, mirror, focus = [0.5, 0.5]) {
+  const vw = v.videoWidth, vh = v.videoHeight;
+  if (!vw) return;
+  const k = fill ? Math.max(w / vw, h / vh) : Math.min(w / vw, h / vh);
+  const dw = vw * k, dh = vh * k;
+  if (v === scr) lastCrop = { sx: Math.max(0, -(w - dw) * focus[0] / k), sy: Math.max(0, -(h - dh) * focus[1] / k), sw: Math.min(vw, w / k), sh: Math.min(vh, h / k) };
+  vctx.save();
+  vctx.beginPath();
+  vctx.rect(x, y, w, h);
+  vctx.clip();
+  if (mirror) { vctx.translate(2 * x + w, 0); vctx.scale(-1, 1); }
+  vctx.drawImage(v, x + (w - dw) * focus[0], y + (h - dh) * focus[1], dw, dh);
+  vctx.restore();
+}
+function drawBubble() {
+  const d = Math.round(Math.min(outW, outH) * 0.32), m = Math.round(d * 0.12);
+  const bottom = fmt === '9:16' ? outH * 0.65 : outH; // stay above the Reels caption area
+  const x = m, y = Math.round(bottom - d - m);
+  vctx.save();
+  vctx.beginPath();
+  vctx.arc(x + d / 2, y + d / 2, d / 2, 0, Math.PI * 2);
+  vctx.clip();
+  drawSource(cam, x, y, d, d, true, mirrorEl.checked);
+  vctx.restore();
+  vctx.beginPath();
+  vctx.arc(x + d / 2, y + d / 2, d / 2 - 3, 0, Math.PI * 2);
+  vctx.lineWidth = 6;
+  vctx.strokeStyle = '#fff';
+  vctx.stroke();
+}
+function compose() {
+  const mode = screenStream ? layoutEl.value : 'cam', mir = mirrorEl.checked;
+  vctx.fillStyle = '#000';
+  vctx.fillRect(0, 0, outW, outH);
+  if (mode === 'cam') drawSource(cam, 0, 0, outW, outH, true, mir);
+  else if (mode === 'bubble') { drawSource(scr, 0, 0, outW, outH, fillEl.checked, false, scrFocus); drawBubble(); }
+  else {
+    // split: stacked for vertical/square formats, side by side for 16:9. Both parts are
+    // filled edge to edge, so there is never a black gap between screen and camera.
+    const vertical = outH >= outW;
+    let share = splitEl.value / 100;
+    if (autoEl.checked && scr.videoWidth) {
+      // give the screen exactly the space its shape needs, so it isn't cropped either
+      const need = vertical ? outW * scr.videoHeight / scr.videoWidth / outH : outH * scr.videoWidth / scr.videoHeight / outW;
+      share = Math.min(0.75, Math.max(0.25, need));
+    }
+    const first = mode === 'split' ? scr : cam, second = first === scr ? cam : scr;
+    const total = vertical ? outH : outW, cut = Math.round(total * (first === scr ? share : 1 - share));
+    const put = (v, a, b) => vertical
+      ? drawSource(v, 0, a, outW, b - a, true, v === cam && mir, v === scr ? scrFocus : undefined)
+      : drawSource(v, a, 0, b - a, outH, true, v === cam && mir, v === scr ? scrFocus : undefined);
+    put(first, 0, cut);
+    put(second, cut, total);
+  }
+  drawAnnotations();
+  drawMap();
+}
+
+// screen map: the whole shared screen, dimmed, with a yellow box on the part being recorded
+const map = $('#scrmap'), mctx = map.getContext('2d');
+function drawMap() {
+  const show = !!screenStream && layoutEl.value !== 'cam' && scr.videoWidth > 0;
+  $('#mapwrap').hidden = !show;
+  if (!show || !lastCrop) return;
+  const vw = scr.videoWidth, vh = scr.videoHeight;
+  if (map.width !== 320) map.width = 320;
+  const mh = Math.round(320 * vh / vw);
+  if (map.height !== mh) map.height = mh;
+  const k = 320 / vw, c = lastCrop;
+  mctx.drawImage(scr, 0, 0, 320, mh);
+  mctx.fillStyle = 'rgba(0,0,0,.6)';
+  mctx.fillRect(0, 0, 320, mh);
+  mctx.drawImage(scr, c.sx, c.sy, c.sw, c.sh, c.sx * k, c.sy * k, c.sw * k, c.sh * k);
+  mctx.strokeStyle = '#ffd60a';
+  mctx.lineWidth = 3;
+  mctx.strokeRect(c.sx * k + 1.5, c.sy * k + 1.5, c.sw * k - 3, c.sh * k - 3);
+}
+// drag on the map: centre the recorded box where the pointer is
+function moveFocus(e) {
+  if (!lastCrop || !(e.buttons & 1)) return;
+  const r = map.getBoundingClientRect(), vw = scr.videoWidth, vh = scr.videoHeight;
+  const px = (e.clientX - r.left) / r.width * vw, py = (e.clientY - r.top) / r.height * vh;
+  const f = (p, size, full) => full > size ? Math.min(1, Math.max(0, (p - size / 2) / (full - size))) : 0.5;
+  scrFocus = [f(px, lastCrop.sw, vw), f(py, lastCrop.sh, vh)];
+}
+map.addEventListener('pointerdown', e => { map.setPointerCapture(e.pointerId); moveFocus(e); });
+map.addEventListener('pointermove', moveFocus);
+
+// ---- drawing on the recording: pen, highlight, circle, arrow ----
+// Shapes live in output-canvas pixels and are drawn by compose(), so they are recorded.
+const shapes = [];
+let tool = null, current = null;
+function setTool(t) {
+  tool = t;
+  const btns = [...document.querySelectorAll('[data-tool]'), ...(pip ? pip.document.querySelectorAll('[data-tool]') : [])];
+  btns.forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+  frame.style.cursor = t ? 'crosshair' : '';
+  promptBox.style.pointerEvents = t ? 'none' : ''; // let strokes pass through the prompter
+}
+function clearAnn() { shapes.length = 0; }
+// maps a pointer on an element that shows the whole frame (object-fit: contain) to canvas pixels
+function toCanvas(e, el) {
+  const r = el.getBoundingClientRect(), k = Math.min(r.width / outW, r.height / outH);
+  return [(e.clientX - r.left - (r.width - outW * k) / 2) / k, (e.clientY - r.top - (r.height - outH * k) / 2) / k];
+}
+function attachDraw(el) {
+  el.addEventListener('pointerdown', e => {
+    if (!tool) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    current = { tool, pts: [toCanvas(e, el)], t: Infinity }; // no fading while drawing
+    shapes.push(current);
+  });
+  el.addEventListener('pointermove', e => {
+    if (!current) return;
+    const p = toCanvas(e, el);
+    if (current.tool === 'pen' || current.tool === 'hl') current.pts.push(p);
+    else current.pts[1] = p;
+  });
+  const end = () => { if (current) { current.t = performance.now(); current = null; } };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+function drawAnnotations() {
+  const now = performance.now(), u = outW / 1080;
+  if (fadeEl.checked) for (let i = shapes.length - 1; i >= 0; i--) if (now - shapes[i].t > 3000) shapes.splice(i, 1);
+  for (const sh of shapes) {
+    const [a, b = a] = [sh.pts[0], sh.pts[sh.pts.length - 1]];
+    vctx.save();
+    vctx.globalAlpha = fadeEl.checked ? Math.min(1, Math.max(0, 1 - (now - sh.t - 2500) / 500)) : 1;
+    vctx.lineCap = vctx.lineJoin = 'round';
+    vctx.strokeStyle = '#ff3b30';
+    vctx.lineWidth = 8 * u;
+    vctx.beginPath();
+    if (sh.tool === 'pen' || sh.tool === 'hl') {
+      if (sh.tool === 'hl') { vctx.strokeStyle = '#ffd60a'; vctx.globalAlpha *= 0.4; vctx.lineWidth = 40 * u; }
+      sh.pts.forEach(([x, y], i) => i ? vctx.lineTo(x, y) : vctx.moveTo(x, y));
+    } else if (sh.tool === 'circle') {
+      vctx.ellipse((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.abs(b[0] - a[0]) / 2, Math.abs(b[1] - a[1]) / 2, 0, 0, Math.PI * 2);
+    } else { // arrow
+      const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), h = 40 * u;
+      vctx.moveTo(a[0], a[1]);
+      vctx.lineTo(b[0], b[1]);
+      vctx.moveTo(b[0] - h * Math.cos(ang - 0.45), b[1] - h * Math.sin(ang - 0.45));
+      vctx.lineTo(b[0], b[1]);
+      vctx.lineTo(b[0] - h * Math.cos(ang + 0.45), b[1] - h * Math.sin(ang + 0.45));
+    }
+    vctx.stroke();
+    vctx.restore();
+  }
+}
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
+$('#clearann').onclick = clearAnn;
+attachDraw(frame);
+
+splitEl.oninput = () => { $('#splitv').textContent = splitEl.value + '%'; };
+autoEl.onchange = () => { splitEl.disabled = autoEl.checked; };
+autoEl.onchange();
+// Driven by a worker timer, not requestAnimationFrame: rAF stops when the browser window
+// is covered, which is exactly when someone is demoing another app.
+new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 1000 / 30)'])))
+  .onmessage = compose;
+
+function stopScreen() {
+  if (!screenStream) return;
+  screenStream.getTracks().forEach(t => t.stop());
+  screenStream = null;
+  scr.srcObject = null;
+  rmScreenBtn.disabled = true;
+}
+$('#addscreen').onclick = async () => {
+  try {
+    const s = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false });
+    stopScreen();
+    screenStream = s;
+    scr.srcObject = s;
+    await scr.play();
+    s.getVideoTracks()[0].onended = stopScreen; // browser's own "Stop sharing" button
+    rmScreenBtn.disabled = false;
+    if (layoutEl.value === 'cam') layoutEl.value = 'split';
+    errEl.textContent = '';
+  } catch (e) {
+    if (e.name !== 'NotAllowedError') errEl.textContent = 'Screen share failed: ' + e.message;
+  }
+};
+rmScreenBtn.onclick = stopScreen;
+
+// ---- recording ----
+const pickType = () =>
+  ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
+    .find(t => MediaRecorder.isTypeSupported(t)) || '';
+function setLocked(v) {
+  document.querySelectorAll('[data-fmt]').forEach(b => b.disabled = v);
+  camEl.disabled = micEl.disabled = cleanEl.disabled = v;
+}
+function showTime() {
+  const live = recorder.state === 'recording';
+  const s = Math.floor((elapsed + (live ? Date.now() - startedAt : 0)) / 1000);
+  statusEl.textContent = `${live ? 'REC' : 'PAUSED'} ${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function beginRecord() {
+  reviewVid.pause();
+  review.hidden = true;
+  setLocked(true);
+  if (!cdEl.checked) return startRecording();
+  let n = 3;
+  countEl.textContent = n;
+  countEl.hidden = false;
+  recBtn.textContent = 'Cancel';
+  countTimer = setInterval(() => {
+    if (--n > 0) { countEl.textContent = n; return; }
+    clearInterval(countTimer);
+    countTimer = 0;
+    countEl.hidden = true;
+    startRecording();
+  }, 1000);
+}
+function cancelCountdown() {
+  clearInterval(countTimer);
+  countTimer = 0;
+  countEl.hidden = true;
+  recBtn.textContent = 'Record';
+  setLocked(false);
+}
+
+function startRecording() {
+  const out = view.captureStream(30);
+  (processed ? processed.stream : stream).getAudioTracks().forEach(t => out.addTrack(t));
+  recorder = new MediaRecorder(out, { mimeType: pickType(), videoBitsPerSecond: 8e6, audioBitsPerSecond: 256000 });
+  chunks = [];
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = finish;
+  recorder.start(1000);
+  if (actx) actx.resume();
+
+  elapsed = 0;
+  startedAt = Date.now();
+  timerId = setInterval(showTime, 250);
+  setScrolling(true);
+  recBtn.textContent = 'Stop';
+  recBtn.classList.add('live');
+  pauseBtn.disabled = false;
+  pauseBtn.textContent = 'Pause rec';
+  dlBtn.disabled = true;
+  errEl.textContent = '';
+}
+
+function togglePause() {
+  if (!isRecording()) return;
+  if (recorder.state === 'recording') {
+    recorder.pause();
+    elapsed += Date.now() - startedAt;
+    setScrolling(false);
+    pauseBtn.textContent = 'Resume rec';
+  } else {
+    recorder.resume();
+    startedAt = Date.now();
+    setScrolling(true);
+    pauseBtn.textContent = 'Pause rec';
+  }
+  showTime();
+}
+
+function stopRecording() {
+  setScrolling(false);
+  recorder.stop(); // fires finish() after last chunk
+  recBtn.textContent = 'Record';
+  recBtn.classList.remove('live');
+  pauseBtn.disabled = true;
+  setLocked(false);
+}
+
+function finish() {
+  clearInterval(timerId);
+  const type = recorder.mimeType || 'video/webm';
+  const blob = new Blob(chunks, { type });
+  if (dlUrl) URL.revokeObjectURL(dlUrl);
+  dlUrl = URL.createObjectURL(blob);
+  dlBtn.dataset.name = `reel-${Date.now()}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+  dlBtn.disabled = false;
+  statusEl.textContent = `Done: ${outW}×${outH}, ${(blob.size / 1048576).toFixed(1)} MB`;
+  reviewVid.src = dlUrl;
+  review.hidden = false;
+}
+
+recBtn.onclick = () => countTimer ? cancelCountdown() : isRecording() ? stopRecording() : beginRecord();
+pauseBtn.onclick = togglePause;
+dlBtn.onclick = () => {
+  const a = document.createElement('a');
+  a.href = dlUrl;
+  a.download = dlBtn.dataset.name;
+  a.click();
+};
+
+// ---- keyboard, presenter clicker, phone remote ----
+const COMMANDS = {
+  play: () => playBtn.click(),
+  back: () => nudge(lineStep() * 2),
+  ahead: () => nudge(-lineStep() * 2),
+  rec: () => recBtn.click(),
+  pause: togglePause,
+};
+$('#back').onclick = COMMANDS.back;
+$('#ahead').onclick = COMMANDS.ahead;
+const KEYS = {
+  Space: COMMANDS.play, Period: COMMANDS.play, KeyB: COMMANDS.play, // clickers often send . or B
+  ArrowUp: () => nudge(lineStep()), ArrowDown: () => nudge(-lineStep()),
+  ArrowLeft: COMMANDS.back, PageUp: COMMANDS.back,
+  ArrowRight: COMMANDS.ahead, PageDown: COMMANDS.ahead,
+  KeyR: COMMANDS.rec, KeyP: COMMANDS.pause,
+  KeyC: clearAnn, Escape: () => setTool(null),
+};
+function onKey(e) {
+  if (e.target.matches('textarea, input, select') || e.metaKey || e.ctrlKey) return;
+  const fn = KEYS[e.code];
+  if (!fn) return;
+  e.preventDefault();
+  if (e.repeat && !e.code.startsWith('Arrow')) return;
+  fn();
+}
+document.addEventListener('keydown', onKey);
+// drop focus after mouse use so Space/arrows reach the prompter, not the control
+document.addEventListener('click', e => { if (e.target.matches('button, input[type=checkbox]')) e.target.blur(); });
+document.addEventListener('change', e => { if (e.target.matches('input[type=range], select')) e.target.blur(); });
+
+// floating preview: Chrome's Document Picture-in-Picture gives an always-on-top window
+// holding the prompter, a live preview you can draw on, and record controls. It is a
+// separate window, so sharing a single app window never records it.
+let pip = null, pipRec = null;
+$('#float').onclick = async () => {
+  if (pip) return pip.close();
+  const live = view.captureStream(30);
+  if (!window.documentPictureInPicture) { // Safari: plain video picture-in-picture
+    const v = Object.assign(document.createElement('video'), { srcObject: live, muted: true, playsInline: true, className: 'src' });
+    document.body.append(v);
+    try { await v.play(); await v.requestPictureInPicture(); }
+    catch (e) { errEl.textContent = 'Floating preview failed: ' + e.message; }
+    return;
+  }
+  try {
+    pip = await documentPictureInPicture.requestWindow({ width: 340, height: Math.min(900, Math.round(340 * outH / outW) + 160) });
+  } catch (e) {
+    live.getTracks().forEach(t => t.stop());
+    errEl.textContent = 'Floating preview failed: ' + e.message;
+    return;
+  }
+  const d = pip.document;
+  document.querySelectorAll('style').forEach(st => d.head.append(st.cloneNode(true)));
+  d.body.style.cssText = 'margin:0;display:flex;flex-direction:column;height:100vh;overflow:hidden';
+  const top = d.createElement('div');
+  top.style.cssText = 'position:relative;flex:0 0 30%';
+  promptBox.style.height = '100%';
+  top.append(promptBox); // the real prompter moves here, so scrolling and remote keep working
+  const v = d.createElement('video');
+  Object.assign(v, { srcObject: live, muted: true, autoplay: true, playsInline: true });
+  v.style.cssText = 'flex:1;min-height:0;width:100%;object-fit:contain;background:#000';
+  const row = () => { const r = d.createElement('div'); r.className = 'row'; r.style.padding = '6px'; d.body.append(r); return r; };
+  const mk = (r, label, fn, t) => {
+    const b = d.createElement('button');
+    b.textContent = label;
+    b.onclick = fn;
+    if (t) b.dataset.tool = t;
+    r.append(b);
+    return b;
+  };
+  d.body.append(top, v);
+  const r1 = row(), r2 = row();
+  pipRec = mk(r1, recBtn.textContent, () => recBtn.click());
+  mk(r1, 'Text ⏯', COMMANDS.play);
+  mk(r1, 'Clear', clearAnn);
+  for (const [t, label] of [['pen', 'Pen'], ['hl', 'Highlight'], ['circle', 'Circle'], ['arrow', 'Arrow']]) {
+    mk(r2, label, () => setTool(tool === t ? null : t), t);
+  }
+  attachDraw(v);
+  setTool(tool);
+  d.addEventListener('keydown', onKey);
+  pip.addEventListener('pagehide', () => {
+    promptBox.style.height = '';
+    frame.insertBefore(promptBox, countEl);
+    live.getTracks().forEach(t => t.stop());
+    pip = pipRec = null;
+    setTool(tool);
+  });
+};
+
+// phone remote: phone POSTs to /api/room/<code>/cmd/<x>, the Worker relays it here
+const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+let room = '';
+try { room = sessionStorage.getItem('room') || ''; } catch (e) {}
+if (!/^[A-Z2-9]{6}$/.test(room)) {
+  room = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ROOM_CHARS[b % ROOM_CHARS.length]).join('');
+  try { sessionStorage.setItem('room', room); } catch (e) {}
+}
+// Only shown once the relay answers: a plain static server (local skill use) has no relay.
+let remoteTries = 0;
+function connectRemote() {
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/room/${room}/ws`);
+  ws.onopen = () => {
+    remoteTries = 0;
+    $('#remote').innerHTML = `Phone remote: open <b>${location.host}/remote</b> on your phone and enter code <b>${room}</b>`;
+  };
+  ws.onmessage = e => COMMANDS[e.data]?.();
+  ws.onclose = () => {
+    $('#remote').textContent = '';
+    if (++remoteTries < 5) setTimeout(connectRemote, 3000);
+  };
+}
+if (location.protocol.startsWith('http')) connectRemote();
+
+// Instagram wants MP4; warn where the browser can only record WebM
+if (!window.MediaRecorder) $('#warn').textContent = 'This browser cannot record video. Use Chrome or Safari.';
+else if (!pickType().includes('mp4')) $('#warn').textContent = 'This browser records WebM, which Instagram may reject. Chrome or Safari record MP4.';
+
+renderScripts();
+fontEl.oninput();
+bgEl.oninput();
+setBoost();
+markEl.onchange();
+view.width = outW;
+view.height = outH;
+splitEl.oninput();
+layout();
+resetPrompt();
+requestAnimationFrame(tick);
+startCamera();
+</script>
+</body>
+</html>

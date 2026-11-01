@@ -1,0 +1,17 @@
+{
+  "name": "reel-teleprompter",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "author": "TestwinPlay / Aakash Singh",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "vendor": "mkdir -p skills/reel-teleprompter/app/vendor/noise && D=node_modules/@sapphi-red/web-noise-suppressor/dist && cp $D/index.js skills/reel-teleprompter/app/vendor/noise/index.js && cp $D/rnnoise/workletProcessor.js skills/reel-teleprompter/app/vendor/noise/rnnoiseWorklet.js && cp $D/rnnoise.wasm $D/rnnoise_simd.wasm skills/reel-teleprompter/app/vendor/noise/"
+  },
+  "devDependencies": {
+    "@sapphi-red/web-noise-suppressor": "^0.4.1",
+    "wrangler": "^4.129.0"
+  }
+}

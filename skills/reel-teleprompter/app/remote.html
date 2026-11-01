@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="robots" content="noindex">
+<title>Prompter Remote</title>
+<style>
+body{margin:0;background:#0b0b0c;color:#f5f5f7;font:18px -apple-system,system-ui,sans-serif;display:grid;gap:12px;padding:16px;min-height:100vh;box-sizing:border-box;grid-template-rows:auto 1.3fr 1fr 1fr 1fr 1fr auto}
+button{border:0;border-radius:16px;background:#2c2c2e;color:#fff;font:inherit;font-size:22px;touch-action:manipulation}
+button:active{background:#48484a}
+#rec{background:#ff3b30;font-weight:600}
+#code{background:#1c1c1e;color:#fff;border:2px solid #2c2c2e;border-radius:12px;padding:12px;font:inherit;font-size:24px;letter-spacing:.3em;text-align:center;text-transform:uppercase}
+#msg{color:#8e8e93;font-size:14px;text-align:center;min-height:1em}
+</style>
+</head>
+<body>
+<input id="code" maxlength="6" placeholder="CODE" autocomplete="off" autocapitalize="characters" aria-label="Code shown on the teleprompter">
+<button id="rec" data-cmd="rec">● Record / Stop</button>
+<button data-cmd="back">▲ Back</button>
+<button data-cmd="play">Play / Pause text</button>
+<button data-cmd="ahead">▼ Ahead</button>
+<button data-cmd="pause">Pause / Resume recording</button>
+<div id="msg">Enter the code shown under the teleprompter controls.</div>
+<script>
+const msg = document.getElementById('msg'), codeEl = document.getElementById('code');
+codeEl.value = new URLSearchParams(location.search).get('room') || '';
+document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = async () => {
+  const code = codeEl.value.trim().toUpperCase();
+  if (!/^[A-Z2-9]{6}$/.test(code)) { msg.textContent = 'Enter the 6-character code first'; return; }
+  try {
+    const r = await fetch(`/api/room/${code}/cmd/${b.dataset.cmd}`, { method: 'POST' });
+    msg.textContent = r.ok ? 'Sent: ' + b.textContent
+      : r.status === 404 ? 'No teleprompter open with that code' : 'Error ' + r.status;
+  } catch (e) {
+    msg.textContent = 'No connection';
+  }
+});
+</script>
+</body>
+</html>
