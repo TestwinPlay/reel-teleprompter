@@ -41,8 +41,7 @@ With the [Skills CLI](https://skills.sh):
 npx skills add https://github.com/TestwinPlay/reel-teleprompter --skill reel-teleprompter
 ```
 
-Add `--global` for a user-level install. Run `npx skills --help` to pick agents
-(for example Codex or Claude Code) and for non-interactive options.
+Add `--global` to install for all projects.
 
 ## Usage
 
@@ -56,13 +55,10 @@ open the teleprompter
 record a reel about why I switched to a standing desk
 ```
 
-The agent starts a local server on `127.0.0.1`, opens the recorder in your browser,
-and (for the second prompt) drafts the script and preloads it. Recording happens in
-your browser and the file goes to your Downloads.
+The agent opens the recorder in your browser and, for the second prompt, drafts and
+preloads the script. Recordings go to your Downloads.
 
 ### Without an agent
-
-Python 3 is the only requirement:
 
 ```bash
 python3 -m http.server 8777 --bind 127.0.0.1 --directory skills/reel-teleprompter/app
@@ -70,124 +66,15 @@ python3 -m http.server 8777 --bind 127.0.0.1 --directory skills/reel-teleprompte
 
 Then open http://127.0.0.1:8777/app.html in Chrome or Safari.
 
-## Architecture
+## Self-host on Cloudflare (optional)
 
-```
-skills/reel-teleprompter/
-  SKILL.md           agent instructions (launch, preload script, user tips)
-  app/               the whole product: static pages, served locally or by Cloudflare
-    index.html       landing page
-    app.html         teleprompter + recorder (/app)
-    remote.html      phone remote (/remote, hosted version only)
-    vendor/noise/    RNNoise worklet + wasm from @sapphi-red/web-noise-suppressor
-                     (`npm run vendor` refreshes it after an upgrade)
-src/worker.js        optional Cloudflare Worker: phone-remote relay under /api/*
-wrangler.jsonc       Cloudflare config: dev (top level), staging, production
-```
+Adds a public link and the phone remote.
 
-- **Recording is 100% client-side.** Camera (`getUserMedia`) and optional screen or
-  window (`getDisplayMedia`) play in hidden `<video>` elements. A compositor draws
-  them into one visible `<canvas>` at the output size (camera only, split
-  screen+camera, camera+screen, or screen with a round face bubble). That canvas is
-  both the preview and the recording: `canvas.captureStream(30)` + processed mic →
-  `MediaRecorder` (MP4 if supported, else WebM) → Blob download. Nothing reaches
-  the server.
-- **The compositor is driven by a Web Worker timer**, not `requestAnimationFrame`:
-  rAF stops when the browser window is covered, which is exactly when someone is
-  demoing another app during a screen recording.
-- **Audio** is captured with the browser's `echoCancellation`, `noiseSuppression`
-  and `autoGainControl` all off: browser call-processing made an external lapel mic
-  sound dull. The raw signal then goes through a Web Audio chain at 48 kHz:
-  RNNoise (AI noise removal, checkbox, on by default) → 80 Hz high-pass → boost
-  slider → compressor → limiter → recording and level meter. Recorded at 256 kbps.
-  RNNoise loads lazily; if it fails, the chain runs without it and the page says so.
-- **Split screen never shows a gap**: both parts are filled edge to edge. "Auto
-  split" sizes the screen part to the shared window's own shape (clamped 25–75%), so
-  it is neither cropped nor letterboxed. With a manual share or the bubble "fill"
-  option the screen is cropped; a map in the panel shows the whole shared screen
-  with a yellow box on the recorded part, and dragging the box moves the crop.
-- **Drawing on the recording** (pen, highlight, circle, arrow; optional 3 s fade) is
-  stored in output-canvas pixels and drawn by the compositor, so it is recorded.
-  Strokes can be drawn on the main preview or the floating preview.
-- **Floating preview** uses Chrome's Document Picture-in-Picture: an always-on-top
-  window holding the real prompter element, a live preview you can draw on, and
-  record/text/tool buttons. It is a separate window, so sharing one app window does
-  not record it (sharing the entire screen does). Safari falls back to plain video
-  picture-in-picture (preview only).
-- **Phone remote relay.** `app.html` creates a random 6-character room code (kept
-  in `sessionStorage`) and opens a WebSocket to `/api/room/<CODE>/ws`. The phone
-  page POSTs `/api/room/<CODE>/cmd/<command>`. One Durable Object (`Room`) per code
-  forwards the command to the sockets in that room. Uses the WebSocket hibernation
-  API, so idle rooms cost nothing.
-- Scripts are stored in the viewer's `localStorage` only. An agent can hand one over
-  in the URL fragment (`app.html#script=<url-encoded>`); the page saves it and clears
-  the fragment, which browsers never send to a server.
-- Served locally, there is no relay, so the phone-remote line stays hidden.
-
-## Data schema
-
-No database. Durable Object `Room` (SQLite-backed class, migration tag `v1`) stores
-nothing; it only holds WebSocket connections.
-
-## API endpoints
-
-| Method | Path | Result |
-|---|---|---|
-| GET (Upgrade: websocket) | `/api/room/<CODE>/ws` | teleprompter joins room; receives command strings |
-| POST | `/api/room/<CODE>/cmd/<command>` | 204 delivered · 404 no teleprompter on that code · 400 bad command |
-
-`<CODE>` = 6 chars `[A-Z2-9]`. `<command>` ∈ `play`, `back`, `ahead`, `rec`, `pause`.
-Anything else under `/api` → 400/404.
-
-## Environments
-
-| Env | Worker name | Deploys from | URL |
-|---|---|---|---|
-| local | `reel-teleprompter-dev` | `npm run dev` | http://127.0.0.1:8787 |
-| staging | `reel-teleprompter-staging` | `npm run deploy:staging` (manual) | `reel-teleprompter-staging.<your-subdomain>.workers.dev` |
-| production | `reel-teleprompter` | `npm run deploy:production` (manual) | not deployed yet; custom domain not chosen |
-
-No secrets. The Cloudflare account comes from `CLOUDFLARE_ACCOUNT_ID` or the account
-you are logged in with; it is deliberately not in `wrangler.jsonc`.
-
-## Deploy and rollback
-
-```
+```bash
 npm install
-npx wrangler login            # once per machine
-npm run deploy:staging        # test on the workers.dev URL
+npx wrangler login
 npm run deploy:production
 ```
-
-Rollback: `npx wrangler rollback --env production` (picks the previous version), or
-`npx wrangler versions list --env production` then deploy a specific version.
-
-Camera access needs HTTPS (or localhost); workers.dev and custom domains are HTTPS.
-
-## Design decisions
-
-- **Static + one tiny Worker**, not a framework: three HTML files need no build step.
-- **Shipped as an agent skill**: the app lives inside the skill folder, so `npx skills add`
-  installs a working recorder and the hosted site deploys the same files.
-- **Client-side recording**: privacy is a selling point, and it costs nothing to host.
-- **Mirror on by default** in preview and output, toggleable.
-- **Safe-zone overlay** uses 14% top / 35% bottom / 6% sides, taken from Meta's
-  published Reels guidance. Assumed, not measured against the live app.
-- **Phone remote has no auth beyond the room code** (~1 billion combinations). Worst
-  case a guesser can scroll text or start/stop a recording on someone's screen; video
-  never leaves the device. Add rate limiting if abuse appears.
-
-## Known limits
-
-- Screen recording captures picture only, no system/app audio (mic is recorded).
-  macOS asks once for Screen Recording permission for the browser (System Settings →
-  Privacy & Security → Screen Recording); the browser may need a restart after.
-
-- The floating window cannot be translucent (OS windows) and the browser cannot draw
-  a marker on other apps; the in-panel screen map shows the recorded area instead.
-- Firefox cannot record MP4; the app warns and records WebM (Instagram may reject it).
-- Layout is designed for laptops; phones get a stacked layout but are not the target.
-- No analytics yet: enable Cloudflare Web Analytics in the dashboard once the domain is set.
 
 ## License
 
