@@ -232,6 +232,10 @@ Camera access needs HTTPS (or localhost); workers.dev and custom domains are HTT
   `python3 -m http.server` returns 200 for pages and noise-removal files; script
   preload works; RNNoise loads; phone-remote line stays hidden without the relay.
   Not yet run: `npx skills add` itself.
+- 2026-11-01: Filled the Apache-2.0 appendix copyright line (2026, TestwinPlay / Aakash
+  Singh), added package metadata (version, description, repository, homepage, issues,
+  keywords) and an open-source credit with a GitHub link on the landing page.
+  `npx skills add` confirmed by the owner: repository cloned and the skill detected.
 
 ## License
 

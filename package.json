@@ -1,8 +1,26 @@
 {
   "name": "reel-teleprompter",
+  "version": "1.0.0",
+  "description": "Free, private browser teleprompter that records Instagram Reels from your laptop: split-screen screen recording, drawing tools, floating preview, AI noise removal. Agent skill for Codex and Claude Code.",
   "private": true,
   "license": "MIT OR Apache-2.0",
   "author": "TestwinPlay / Aakash Singh",
+  "homepage": "https://github.com/TestwinPlay/reel-teleprompter#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TestwinPlay/reel-teleprompter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TestwinPlay/reel-teleprompter/issues"
+  },
+  "keywords": [
+    "teleprompter",
+    "instagram-reels",
+    "screen-recorder",
+    "video-recorder",
+    "agent-skill",
+    "noise-suppression"
+  ],
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
