@@ -642,55 +642,74 @@ bgSrcEl.onchange = () => {
 };
 
 // ---- cutout: remove the camera background on-device (MediaPipe selfie segmenter) ----
-let segmenter = null, segState = 'idle', maskImg = null, segTs = 0, cutPos = [0.5, 1], lastCutRect = null;
+let segWorker = null, segState = 'idle', segBusy = false, maskImg = null, prevMask = null, segTs = 0;
+let cutPos = [0.5, 1], lastCutRect = null;
+// Smoothness: segmentation runs in a worker (seg-worker.js) on a 256 px copy of the
+// camera, so the 30 fps compositor never waits for it; each frame uses the newest mask.
+// On the main thread at full size it cost ~28 ms per frame and made the video stutter.
+const SEG_W = 256;
 const cutCanvas = document.createElement('canvas'), cutCtx = cutCanvas.getContext('2d');
 const maskCanvas = document.createElement('canvas'), maskCtx = maskCanvas.getContext('2d');
-async function loadSegmenter() {
+function loadSegmenter() {
   if (segState !== 'idle') return;
   segState = 'loading';
   $('#warn').textContent = 'Loading background removal…';
-  try {
-    const { FilesetResolver, ImageSegmenter } = await import('/vendor/mediapipe/vision_bundle.mjs');
-    const files = await FilesetResolver.forVisionTasks('/vendor/mediapipe/wasm');
-    const make = delegate => ImageSegmenter.createFromOptions(files, {
-      baseOptions: { modelAssetPath: '/vendor/mediapipe/selfie_segmenter.tflite', delegate },
-      runningMode: 'VIDEO', outputCategoryMask: false, outputConfidenceMasks: true,
-    });
-    segmenter = await make('GPU').catch(() => make('CPU'));
-    segState = 'ready';
-    $('#warn').textContent = '';
-  } catch (e) {
+  const fail = msg => {
     segState = 'failed';
-    $('#warn').textContent = 'Background removal unavailable in this browser (showing a face bubble instead): ' + e.message;
+    $('#warn').textContent = 'Background removal unavailable in this browser (showing a face bubble instead): ' + msg;
+  };
+  try {
+    segWorker = new Worker('/seg-worker.js', { type: 'module' });
+  } catch (e) {
+    return fail(e.message);
   }
+  segWorker.onerror = e => fail(e.message || 'worker error');
+  segWorker.onmessage = ({ data }) => {
+    if (data.error) return fail(data.error);
+    if (data.ready) { segState = 'ready'; $('#warn').textContent = ''; return; }
+    segBusy = false;
+    const m = data.mask;
+    if (!m) return;
+    if (!maskImg || maskImg.width !== m.w || maskImg.height !== m.h) {
+      maskImg = new ImageData(m.w, m.h);
+      prevMask = new Float32Array(m.conf.length);
+      maskCanvas.width = m.w;
+      maskCanvas.height = m.h;
+    }
+    // light temporal smoothing: steadier edges without visible lag
+    const px = maskImg.data;
+    for (let i = 0, j = 3; i < m.conf.length; i++, j += 4) {
+      const v = prevMask[i] = prevMask[i] * 0.2 + m.conf[i] * 0.8;
+      px[j] = v * 255; // alpha only
+    }
+    maskCtx.putImageData(maskImg, 0, 0);
+  };
+  segWorker.postMessage({ init: true });
+}
+function requestMask(vw, vh) {
+  if (segBusy) return; // the worker is still on the previous frame; skip, never queue up
+  segBusy = true;
+  segTs = Math.max(segTs + 1, performance.now()); // MediaPipe needs strictly increasing timestamps
+  const ts = segTs;
+  createImageBitmap(cam, { resizeWidth: SEG_W, resizeHeight: Math.round(SEG_W * vh / vw), resizeQuality: 'low' })
+    .then(bitmap => segWorker.postMessage({ bitmap, ts }, [bitmap]))
+    .catch(() => { segBusy = false; });
 }
 function drawCutout(mir) {
   const [vw, vh] = dims(cam);
   if (!vw) return;
   if (segState === 'failed') return drawBubble();
   if (segState !== 'ready') return loadSegmenter();
-  segTs = Math.max(segTs + 1, performance.now()); // MediaPipe needs strictly increasing timestamps
-  try { segmenter.segmentForVideo(cam, segTs, res => {
-    const m = res.confidenceMasks?.[0];
-    if (!m) return;
-    const conf = m.getAsFloat32Array(), mw = m.width, mh = m.height;
-    if (!maskImg || maskImg.width !== mw || maskImg.height !== mh) {
-      maskImg = new ImageData(mw, mh);
-      maskCanvas.width = mw;
-      maskCanvas.height = mh;
-    }
-    const px = maskImg.data;
-    for (let i = 0, j = 3; i < conf.length; i++, j += 4) px[j] = conf[i] * 255; // alpha only
-    maskCtx.putImageData(maskImg, 0, 0);
-  }); } catch (e) { /* skip this frame's mask; the previous one is reused */ }
+  requestMask(vw, vh);
   if (!maskImg) return;
-  if (cutCanvas.width !== vw || cutCanvas.height !== vh) { cutCanvas.width = vw; cutCanvas.height = vh; }
+  // compose at no more than 1280 px wide: the cutout never needs more than the camera gives
+  const cw = Math.min(vw, 1280), ch = Math.round(cw * vh / vw);
+  if (cutCanvas.width !== cw || cutCanvas.height !== ch) { cutCanvas.width = cw; cutCanvas.height = ch; }
   cutCtx.globalCompositeOperation = 'copy';
-  cutCtx.drawImage(cam, 0, 0, vw, vh);
+  cutCtx.drawImage(cam, 0, 0, cw, ch);
   cutCtx.globalCompositeOperation = 'destination-in';
-  cutCtx.filter = 'blur(2px)'; // soften the edge
-  cutCtx.drawImage(maskCanvas, 0, 0, vw, vh);
-  cutCtx.filter = 'none';
+  cutCtx.imageSmoothingQuality = 'high'; // upscaling the small mask also softens the edge
+  cutCtx.drawImage(maskCanvas, 0, 0, cw, ch);
   cutCtx.globalCompositeOperation = 'source-over';
   const h = outH * cutSizeEl.value / 100, w = h * vw / vh;
   const x = cutPos[0] * outW - w / 2, y = cutPos[1] * outH - h;
@@ -801,8 +820,16 @@ autoEl.onchange = () => { splitEl.disabled = autoEl.checked; };
 autoEl.onchange();
 // Driven by a worker timer, not requestAnimationFrame: rAF stops when the browser window
 // is covered, which is exactly when someone is demoing another app.
+// If one frame runs long, queued ticks would fire back to back and the video would
+// stutter; drop a tick that arrives too soon after the last frame instead.
+let lastFrame = 0;
 new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 1000 / 30)'])))
-  .onmessage = compose;
+  .onmessage = () => {
+    const now = performance.now();
+    if (now - lastFrame < 25) return;
+    lastFrame = now;
+    compose();
+  };
 
 function stopScreen() {
   if (!screenStream) return;
