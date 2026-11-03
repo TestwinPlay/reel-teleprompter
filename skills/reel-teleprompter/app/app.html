@@ -18,6 +18,8 @@ body{display:flex;height:100vh;margin:0;background:#0b0b0c;color:#f5f5f7;font:14
 #prompt{position:absolute;top:0;left:0;right:0;height:42%;overflow:hidden;background:rgba(0,0,0,.6)}
 #marker{position:absolute;left:0;right:0;top:30%;background:rgba(255,214,10,.18);border-left:4px solid #ffd60a}
 #prompt-text{position:absolute;left:0;right:0;top:0;padding:0 6%;color:#fff;font-size:30px;font-weight:600;line-height:1.4;white-space:pre-wrap;text-shadow:0 1px 3px #000;will-change:transform}
+#needbg{position:absolute;left:8%;right:8%;top:50%;transform:translateY(-50%);background:rgba(28,28,30,.92);border-radius:12px;padding:14px;text-align:center;font-size:14px;line-height:1.4}
+#needbg button{margin:10px 4px 0;flex:none}
 #count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:700;color:#fff;text-shadow:0 2px 12px #000;pointer-events:none}
 #review{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;gap:8px;padding:8px;box-sizing:border-box}
 #review video{flex:1;min-height:0;width:100%;object-fit:contain}
@@ -56,6 +58,7 @@ h1 a{color:inherit;text-decoration:none}
     <div id="safe" hidden><span>Instagram safe zone</span></div>
     <div id="prompt"><div id="marker"></div><div id="prompt-text"></div></div>
     <div id="count" hidden></div>
+    <div id="needbg" hidden>This layout needs a background.<br><button id="needbg-screen">Share screen / window</button><button id="needbg-files">Add files</button></div>
     <div id="review" hidden>
       <video controls playsinline></video>
       <button id="closereview">Back to camera</button>
@@ -476,6 +479,8 @@ function compose() {
   curBg = bgSource();
   const hasBg = bgSrcEl.value === 'screen' ? !!screenStream : slides.length > 0;
   const mode = hasBg ? layoutEl.value : 'cam', mir = mirrorEl.checked, cover = !fillEl.checked;
+  // a layout other than "Me only" needs a background: say so on the preview (not recorded)
+  $('#needbg').hidden = hasBg || layoutEl.value === 'cam';
   vctx.fillStyle = '#000';
   vctx.fillRect(0, 0, outW, outH);
   if (mode === 'cam') drawSource(cam, 0, 0, outW, outH, true, mir);
@@ -741,6 +746,8 @@ function attachCutDrag(el) {
 }
 cutSizeEl.oninput = () => { $('#cutv').textContent = cutSizeEl.value + '%'; };
 cutSizeEl.oninput();
+$('#needbg-screen').onclick = () => $('#addscreen').click();
+$('#needbg-files').onclick = () => { bgSrcEl.value = 'files'; bgSrcEl.onchange(); $('#fileinput').click(); };
 layoutEl.onchange = () => {
   $('#cutbox').hidden = layoutEl.value !== 'cutout';
   if (layoutEl.value === 'cutout') loadSegmenter();
