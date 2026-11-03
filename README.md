@@ -13,13 +13,15 @@ and other coding agents. No sign-up, no watermark, nothing uploaded.
 | Never lose your place | Move the text back or ahead with the trackpad, arrow keys, a presenter clicker, or your phone as a remote (hosted version) | Fix a missed line without restarting the take |
 | Saved scripts | Several scripts kept in the browser, named by their first line; an agent can draft one and preload it | Switch between reels quickly; "record a reel about X" works in one prompt |
 | Screen + face, split screen | Share any app window or the whole screen; layouts: screen above you, you above screen, side by side (16:9), or full screen with a round face bubble | Tutorials, demos and reaction videos in one take |
+| Your files as background | Add videos (e.g. a reel), images and PDFs; they play as a slideshow behind or beside you, in any layout. Videos play to the end, images and PDF pages advance on a timer or with Prev/Next ([ and ] keys) | Talk over a reel, walk through a PDF deck or a product photo, all in one take |
+| Cutout of you | Removes your camera background on-device and puts you over a full-frame screen share or your files; drag to move yourself, slider to resize | Green-screen look without a green screen; the background fills the whole frame |
 | No gap, exact framing | Screen and camera meet edge to edge; Auto split sizes the screen to its own shape; a screen map with a draggable yellow box shows and picks the recorded part when it is cropped | Clean, professional split screen; you always know what viewers will see |
 | Draw while recording | Pen, highlight, circle and arrow drawn onto the video, with optional 3-second fade; C clears, Esc exits | Point at what matters without editing later |
-| Floating preview | Always-on-top window (Chrome) with the prompter, a live preview you can draw on, and record controls; not captured when you share a single window | Watch exactly what is being recorded while you work in another app |
+| Floating preview | Always-on-top window (Chrome) with the prompter, a live preview you can draw on and move your cutout in, and record controls; not captured when you share a single window | Watch exactly what is being recorded while you work in another app |
 | Clean audio | Choose any mic (USB, wireless lapel, built-in); raw capture without call-style processing; AI noise removal (RNNoise); 80 Hz rumble filter; boost with compressor and limiter; live level meter | Studio-like voice: fan, AC and hiss removed, loud enough, no clipping |
 | Take control | Pause and resume into one file, play back the take, then download | Fewer retakes, nothing posted by accident |
 | Instagram safe zone | Overlay showing where the caption and buttons will cover the video | Keep faces and text visible after posting |
-| Private by design | Camera, screen, mixing and encoding all run in the browser; no account, no upload, no watermark | Safe for client work and unreleased products; free to run |
+| Private by design | Camera, screen, your files, background removal, mixing and encoding all run in the browser; no account, no upload, no watermark | Safe for client work and unreleased products; free to run |
 
 ## Requirements
 

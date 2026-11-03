@@ -2,7 +2,7 @@
 
 Reel Teleprompter is licensed under MIT OR Apache-2.0 (see LICENSE-MIT and
 LICENSE-APACHE). It bundles the following third-party code in
-`skills/reel-teleprompter/app/vendor/noise/`, which keeps its own licence.
+`skills/reel-teleprompter/app/vendor/`, which keeps its own licence.
 
 ## @sapphi-red/web-noise-suppressor 0.4.1 (MIT)
 
@@ -78,3 +78,19 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## Google MediaPipe Tasks Vision 1.2.0 and the Selfie Segmenter model (Apache-2.0)
+
+Files: `vendor/mediapipe/vision_bundle.mjs`, `vendor/mediapipe/wasm/*`,
+`vendor/mediapipe/selfie_segmenter.tflite`. Used for on-device background removal.
+Source: https://github.com/google-ai-edge/mediapipe. Copyright Google LLC. Licensed
+under the Apache License, Version 2.0; the full text is in LICENSE-APACHE.
+
+## Mozilla PDF.js 6.5.438 (Apache-2.0)
+
+Files: `vendor/pdfjs/pdf.min.mjs`, `vendor/pdfjs/pdf.worker.min.mjs`,
+`vendor/pdfjs/standard_fonts/*`. Used to show PDF pages. Source:
+https://github.com/mozilla/pdf.js. Copyright Mozilla Foundation and contributors.
+Licensed under the Apache License, Version 2.0 (`vendor/pdfjs/LICENSE`). The standard
+fonts directory contains fonts under their own permissive licences, listed in
+`vendor/pdfjs/standard_fonts/`.

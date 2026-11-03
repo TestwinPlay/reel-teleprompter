@@ -91,23 +91,47 @@ h1 a{color:inherit;text-decoration:none}
   <label>Camera</label>
   <select id="camsel"></select>
   <label class="check"><input type="checkbox" id="mirror" checked> Mirror (selfie view)</label>
-  <label>Screen recording</label>
-  <div class="row">
+  <label>Background</label>
+  <select id="bgsrc" aria-label="Background source">
+    <option value="screen">Screen / window share</option>
+    <option value="files">My files: videos, images, PDFs</option>
+  </select>
+  <div class="row" id="screenrow">
     <button id="addscreen">Add screen / window</button>
     <button id="rmscreen" disabled>Remove</button>
   </div>
+  <div id="filesbox" hidden>
+    <div class="row">
+      <button id="addfiles">Add files</button>
+      <button id="clearfiles" disabled>Remove all</button>
+    </div>
+    <input type="file" id="fileinput" multiple accept="video/*,image/*,application/pdf" hidden>
+    <div class="row">
+      <button id="prevslide">◀ Prev</button>
+      <span id="slideinfo" class="note" style="flex:2;align-self:center;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">No files yet</span>
+      <button id="nextslide">Next ▶</button>
+    </div>
+    <label class="check"><input type="checkbox" id="autoadv" checked> Images and PDF pages advance every <input id="slidesec" type="number" min="1" max="120" value="5" style="width:48px;background:#2c2c2e;color:#fff;border:0;border-radius:6px;padding:2px 4px"> s</label>
+  </div>
+  <label>Layout</label>
   <select id="layoutsel" aria-label="Layout">
-    <option value="split">Split: screen + me</option>
-    <option value="splitflip">Split: me + screen</option>
-    <option value="bubble">Screen + face bubble</option>
+    <option value="split">Split: background + me</option>
+    <option value="splitflip">Split: me + background</option>
+    <option value="cutout">Cutout: me over full background</option>
+    <option value="bubble">Full background + face bubble</option>
     <option value="cam">Me only</option>
   </select>
-  <label class="check"><input type="checkbox" id="autosplit" checked> Auto split (match screen shape, no gap)</label>
-  <label>Screen share of frame <span id="splitv"></span></label>
+  <div id="cutbox" hidden>
+    <label>Cutout size <span id="cutv"></span></label>
+    <input id="cutsize" type="range" min="20" max="120" value="70">
+    <p class="note">Drag yourself on the preview to move. Background removal runs on this device.</p>
+  </div>
+  <label class="check"><input type="checkbox" id="autosplit" checked> Auto split (match background shape, no gap)</label>
+  <label>Background share of frame <span id="splitv"></span></label>
   <input id="split" type="range" min="30" max="75" value="55">
-  <label class="check"><input type="checkbox" id="fillscr"> Bubble layout: fill frame (crops screen)</label>
+  <label class="check"><input type="checkbox" id="fillscr"> Show whole background in full-frame layouts (adds bars)</label>
   <div id="mapwrap" hidden>
-    <label>Recorded part of your screen (drag the box to move it)</label>
+    <label>Recorded part of the background (drag the box to move it)</label>
     <canvas id="scrmap"></canvas>
   </div>
   <button id="float">Floating preview window</button>
@@ -162,6 +186,7 @@ const statusEl = $('#status'), errEl = $('#err');
 const view = $('#view'), vctx = view.getContext('2d'), scr = $('#scr');
 const layoutEl = $('#layoutsel'), splitEl = $('#split'), fillEl = $('#fillscr'), rmScreenBtn = $('#rmscreen');
 const autoEl = $('#autosplit'), fadeEl = $('#fade');
+const bgSrcEl = $('#bgsrc'), slideInfo = $('#slideinfo'), autoAdvEl = $('#autoadv'), slideSecEl = $('#slidesec'), cutSizeEl = $('#cutsize');
 const FORMATS = { '9:16': [1080, 1920], '4:5': [1080, 1350], '1:1': [1080, 1080], '16:9': [1920, 1080] };
 let fmt = '9:16', [outW, outH] = FORMATS[fmt];
 let stream = null, screenStream = null, recorder = null, chunks = [];
@@ -406,16 +431,18 @@ boostEl.oninput = setBoost;
 // browsers start audio suspended until the first click
 document.addEventListener('pointerdown', () => { if (actx && actx.state === 'suspended') actx.resume(); });
 
-// ---- compositor: camera and optional screen drawn into one canvas ----
+// ---- compositor: camera plus an optional background drawn into one canvas ----
 // The canvas is both the preview and what gets recorded, so they always match.
-// focus 0..1 picks which part of a cropped source stays in view (0.5 = centre)
-let scrFocus = [0.5, 0.5], lastCrop = null;
+// The background is either the shared screen or the current slide of the user's files.
+const dims = v => v ? [v.videoWidth || v.naturalWidth || v.width || 0, v.videoHeight || v.naturalHeight || v.height || 0] : [0, 0];
+// focus 0..1 picks which part of a cropped background stays in view (0.5 = centre)
+let scrFocus = [0.5, 0.5], lastCrop = null, curBg = null;
 function drawSource(v, x, y, w, h, fill, mirror, focus = [0.5, 0.5]) {
-  const vw = v.videoWidth, vh = v.videoHeight;
+  const [vw, vh] = dims(v);
   if (!vw) return;
   const k = fill ? Math.max(w / vw, h / vh) : Math.min(w / vw, h / vh);
   const dw = vw * k, dh = vh * k;
-  if (v === scr) lastCrop = { sx: Math.max(0, -(w - dw) * focus[0] / k), sy: Math.max(0, -(h - dh) * focus[1] / k), sw: Math.min(vw, w / k), sh: Math.min(vh, h / k) };
+  if (v === curBg) lastCrop = { sx: Math.max(0, -(w - dw) * focus[0] / k), sy: Math.max(0, -(h - dh) * focus[1] / k), sw: Math.min(vw, w / k), sh: Math.min(vh, h / k) };
   vctx.save();
   vctx.beginPath();
   vctx.rect(x, y, w, h);
@@ -440,49 +467,58 @@ function drawBubble() {
   vctx.strokeStyle = '#fff';
   vctx.stroke();
 }
+function bgSource() {
+  if (bgSrcEl.value === 'screen') return screenStream ? scr : null;
+  return slides[slideIdx]?.el || null; // a PDF page is null until it has rendered
+}
 function compose() {
-  const mode = screenStream ? layoutEl.value : 'cam', mir = mirrorEl.checked;
+  if (bgSrcEl.value === 'files') tickSlides();
+  curBg = bgSource();
+  const hasBg = bgSrcEl.value === 'screen' ? !!screenStream : slides.length > 0;
+  const mode = hasBg ? layoutEl.value : 'cam', mir = mirrorEl.checked, cover = !fillEl.checked;
   vctx.fillStyle = '#000';
   vctx.fillRect(0, 0, outW, outH);
   if (mode === 'cam') drawSource(cam, 0, 0, outW, outH, true, mir);
-  else if (mode === 'bubble') { drawSource(scr, 0, 0, outW, outH, fillEl.checked, false, scrFocus); drawBubble(); }
+  else if (mode === 'bubble') { drawSource(curBg, 0, 0, outW, outH, cover, false, scrFocus); drawBubble(); }
+  else if (mode === 'cutout') { drawSource(curBg, 0, 0, outW, outH, cover, false, scrFocus); drawCutout(mir); }
   else {
     // split: stacked for vertical/square formats, side by side for 16:9. Both parts are
-    // filled edge to edge, so there is never a black gap between screen and camera.
-    const vertical = outH >= outW;
+    // filled edge to edge, so there is never a black gap between background and camera.
+    const vertical = outH >= outW, [bw, bh] = dims(curBg);
     let share = splitEl.value / 100;
-    if (autoEl.checked && scr.videoWidth) {
-      // give the screen exactly the space its shape needs, so it isn't cropped either
-      const need = vertical ? outW * scr.videoHeight / scr.videoWidth / outH : outH * scr.videoWidth / scr.videoHeight / outW;
+    if (autoEl.checked && bw) {
+      // give the background exactly the space its shape needs, so it isn't cropped either
+      const need = vertical ? outW * bh / bw / outH : outH * bw / bh / outW;
       share = Math.min(0.75, Math.max(0.25, need));
     }
-    const first = mode === 'split' ? scr : cam, second = first === scr ? cam : scr;
-    const total = vertical ? outH : outW, cut = Math.round(total * (first === scr ? share : 1 - share));
-    const put = (v, a, b) => vertical
-      ? drawSource(v, 0, a, outW, b - a, true, v === cam && mir, v === scr ? scrFocus : undefined)
-      : drawSource(v, a, 0, b - a, outH, true, v === cam && mir, v === scr ? scrFocus : undefined);
-    put(first, 0, cut);
-    put(second, cut, total);
+    const bgFirst = mode === 'split', total = vertical ? outH : outW;
+    const cut = Math.round(total * (bgFirst ? share : 1 - share));
+    const put = (isCam, a, b) => {
+      const v = isCam ? cam : curBg, f = isCam ? undefined : scrFocus;
+      if (vertical) drawSource(v, 0, a, outW, b - a, true, isCam && mir, f);
+      else drawSource(v, a, 0, b - a, outH, true, isCam && mir, f);
+    };
+    put(!bgFirst, 0, cut);
+    put(bgFirst, cut, total);
   }
   drawAnnotations();
-  drawMap();
+  drawMap(mode);
 }
 
-// screen map: the whole shared screen, dimmed, with a yellow box on the part being recorded
+// ---- background map: the whole background, dimmed, with a yellow box on the recorded part ----
 const map = $('#scrmap'), mctx = map.getContext('2d');
-function drawMap() {
-  const show = !!screenStream && layoutEl.value !== 'cam' && scr.videoWidth > 0;
+function drawMap(mode) {
+  const [vw, vh] = dims(curBg), show = mode !== 'cam' && vw > 0;
   $('#mapwrap').hidden = !show;
   if (!show || !lastCrop) return;
-  const vw = scr.videoWidth, vh = scr.videoHeight;
   if (map.width !== 320) map.width = 320;
   const mh = Math.round(320 * vh / vw);
   if (map.height !== mh) map.height = mh;
   const k = 320 / vw, c = lastCrop;
-  mctx.drawImage(scr, 0, 0, 320, mh);
+  mctx.drawImage(curBg, 0, 0, 320, mh);
   mctx.fillStyle = 'rgba(0,0,0,.6)';
   mctx.fillRect(0, 0, 320, mh);
-  mctx.drawImage(scr, c.sx, c.sy, c.sw, c.sh, c.sx * k, c.sy * k, c.sw * k, c.sh * k);
+  mctx.drawImage(curBg, c.sx, c.sy, c.sw, c.sh, c.sx * k, c.sy * k, c.sw * k, c.sh * k);
   mctx.strokeStyle = '#ffd60a';
   mctx.lineWidth = 3;
   mctx.strokeRect(c.sx * k + 1.5, c.sy * k + 1.5, c.sw * k - 3, c.sh * k - 3);
@@ -490,13 +526,207 @@ function drawMap() {
 // drag on the map: centre the recorded box where the pointer is
 function moveFocus(e) {
   if (!lastCrop || !(e.buttons & 1)) return;
-  const r = map.getBoundingClientRect(), vw = scr.videoWidth, vh = scr.videoHeight;
+  const r = map.getBoundingClientRect(), [vw, vh] = dims(curBg);
   const px = (e.clientX - r.left) / r.width * vw, py = (e.clientY - r.top) / r.height * vh;
   const f = (p, size, full) => full > size ? Math.min(1, Math.max(0, (p - size / 2) / (full - size))) : 0.5;
   scrFocus = [f(px, lastCrop.sw, vw), f(py, lastCrop.sh, vh)];
 }
 map.addEventListener('pointerdown', e => { map.setPointerCapture(e.pointerId); moveFocus(e); });
 map.addEventListener('pointermove', moveFocus);
+
+// ---- your files as the background: videos, images, PDF pages, played as a slideshow ----
+let slides = [], slideIdx = 0, slideStart = 0, pdfjsReady = null;
+const loadPdfjs = () => pdfjsReady ||= import('/vendor/pdfjs/pdf.min.mjs').then(m => {
+  m.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+  return m;
+});
+async function renderPdfPage(sl) {
+  if (sl.el || sl.busy) return;
+  sl.busy = true;
+  try {
+    const page = await sl.doc.getPage(sl.n), base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: 2000 / Math.max(base.width, base.height) }); // crisp at 1080p
+    const c = Object.assign(document.createElement('canvas'), { width: Math.round(viewport.width), height: Math.round(viewport.height) });
+    await page.render({ canvas: c, canvasContext: c.getContext('2d'), viewport }).promise;
+    sl.el = c;
+  } catch (e) {
+    errEl.textContent = 'Could not draw PDF page: ' + e.message;
+  }
+  sl.busy = false;
+}
+function showSlide(i) {
+  const prev = slides[slideIdx];
+  if (prev?.kind === 'video') prev.el.pause();
+  if (!slides.length) { slideInfo.textContent = 'No files yet'; $('#clearfiles').disabled = true; return; }
+  slideIdx = (i + slides.length) % slides.length;
+  slideStart = performance.now();
+  scrFocus = [0.5, 0.5];
+  const sl = slides[slideIdx];
+  if (sl.kind === 'video') {
+    sl.el.loop = slides.length === 1;
+    sl.el.currentTime = 0;
+    sl.el.play().catch(() => {});
+  }
+  // keep only nearby PDF pages rendered: a 2000 px page is ~16 MB of memory
+  slides.forEach((x, j) => {
+    if (x.kind !== 'pdf') return;
+    const near = Math.abs(j - slideIdx) <= 1 || j === (slideIdx + 1) % slides.length;
+    if (near) renderPdfPage(x); else x.el = null;
+  });
+  slideInfo.textContent = `${slideIdx + 1}/${slides.length} · ${sl.name}`;
+  $('#clearfiles').disabled = false;
+}
+const nextSlide = () => showSlide(slideIdx + 1), prevSlide = () => showSlide(slideIdx - 1);
+function tickSlides() {
+  const sl = slides[slideIdx];
+  if (sl && sl.kind !== 'video' && autoAdvEl.checked && slides.length > 1 &&
+      performance.now() - slideStart > Math.max(1, +slideSecEl.value || 5) * 1000) nextSlide();
+}
+async function addFiles(files) {
+  const firstNew = slides.length;
+  for (const f of files) {
+    try {
+      if (f.type.startsWith('video/')) {
+        const v = Object.assign(document.createElement('video'), { src: URL.createObjectURL(f), muted: true, playsInline: true, preload: 'auto', className: 'src' });
+        document.body.append(v);
+        const sl = { kind: 'video', el: v, name: f.name };
+        v.onended = () => { if (slides[slideIdx] === sl) nextSlide(); };
+        slides.push(sl);
+      } else if (f.type.startsWith('image/')) {
+        const img = new Image();
+        img.src = URL.createObjectURL(f);
+        await img.decode();
+        slides.push({ kind: 'image', el: img, name: f.name });
+      } else if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
+        const pdfjs = await loadPdfjs();
+        const doc = await pdfjs.getDocument({ data: await f.arrayBuffer(), standardFontDataUrl: '/vendor/pdfjs/standard_fonts/' }).promise;
+        for (let n = 1; n <= Math.min(doc.numPages, 300); n++) slides.push({ kind: 'pdf', doc, n, el: null, name: `${f.name} · page ${n}` });
+      } else {
+        errEl.textContent = `Skipped ${f.name}: only videos, images and PDFs`;
+      }
+    } catch (e) {
+      errEl.textContent = `Could not open ${f.name}: ${e.message}`;
+    }
+  }
+  if (slides.length > firstNew) {
+    bgSrcEl.value = 'files';
+    bgSrcEl.onchange();
+    if (layoutEl.value === 'cam') { layoutEl.value = 'split'; layoutEl.onchange(); }
+    showSlide(firstNew);
+  }
+}
+function clearFiles() {
+  for (const sl of slides) {
+    if (sl.kind === 'video') { sl.el.pause(); URL.revokeObjectURL(sl.el.src); sl.el.remove(); }
+    if (sl.kind === 'image') URL.revokeObjectURL(sl.el.src);
+  }
+  new Set(slides.filter(x => x.doc).map(x => x.doc)).forEach(d => d.destroy());
+  slides = [];
+  slideIdx = 0;
+  showSlide(0);
+}
+$('#addfiles').onclick = () => $('#fileinput').click();
+$('#fileinput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+$('#clearfiles').onclick = clearFiles;
+$('#prevslide').onclick = prevSlide;
+$('#nextslide').onclick = nextSlide;
+// dropping files anywhere on the page adds them too
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]); });
+bgSrcEl.onchange = () => {
+  $('#screenrow').hidden = bgSrcEl.value !== 'screen';
+  $('#filesbox').hidden = bgSrcEl.value !== 'files';
+  scrFocus = [0.5, 0.5];
+  const sl = slides[slideIdx];
+  if (sl?.kind === 'video') bgSrcEl.value === 'files' ? sl.el.play().catch(() => {}) : sl.el.pause();
+};
+
+// ---- cutout: remove the camera background on-device (MediaPipe selfie segmenter) ----
+let segmenter = null, segState = 'idle', maskImg = null, segTs = 0, cutPos = [0.5, 1], lastCutRect = null;
+const cutCanvas = document.createElement('canvas'), cutCtx = cutCanvas.getContext('2d');
+const maskCanvas = document.createElement('canvas'), maskCtx = maskCanvas.getContext('2d');
+async function loadSegmenter() {
+  if (segState !== 'idle') return;
+  segState = 'loading';
+  $('#warn').textContent = 'Loading background removal…';
+  try {
+    const { FilesetResolver, ImageSegmenter } = await import('/vendor/mediapipe/vision_bundle.mjs');
+    const files = await FilesetResolver.forVisionTasks('/vendor/mediapipe/wasm');
+    const make = delegate => ImageSegmenter.createFromOptions(files, {
+      baseOptions: { modelAssetPath: '/vendor/mediapipe/selfie_segmenter.tflite', delegate },
+      runningMode: 'VIDEO', outputCategoryMask: false, outputConfidenceMasks: true,
+    });
+    segmenter = await make('GPU').catch(() => make('CPU'));
+    segState = 'ready';
+    $('#warn').textContent = '';
+  } catch (e) {
+    segState = 'failed';
+    $('#warn').textContent = 'Background removal unavailable in this browser (showing a face bubble instead): ' + e.message;
+  }
+}
+function drawCutout(mir) {
+  const [vw, vh] = dims(cam);
+  if (!vw) return;
+  if (segState === 'failed') return drawBubble();
+  if (segState !== 'ready') return loadSegmenter();
+  segTs = Math.max(segTs + 1, performance.now()); // MediaPipe needs strictly increasing timestamps
+  try { segmenter.segmentForVideo(cam, segTs, res => {
+    const m = res.confidenceMasks?.[0];
+    if (!m) return;
+    const conf = m.getAsFloat32Array(), mw = m.width, mh = m.height;
+    if (!maskImg || maskImg.width !== mw || maskImg.height !== mh) {
+      maskImg = new ImageData(mw, mh);
+      maskCanvas.width = mw;
+      maskCanvas.height = mh;
+    }
+    const px = maskImg.data;
+    for (let i = 0, j = 3; i < conf.length; i++, j += 4) px[j] = conf[i] * 255; // alpha only
+    maskCtx.putImageData(maskImg, 0, 0);
+  }); } catch (e) { /* skip this frame's mask; the previous one is reused */ }
+  if (!maskImg) return;
+  if (cutCanvas.width !== vw || cutCanvas.height !== vh) { cutCanvas.width = vw; cutCanvas.height = vh; }
+  cutCtx.globalCompositeOperation = 'copy';
+  cutCtx.drawImage(cam, 0, 0, vw, vh);
+  cutCtx.globalCompositeOperation = 'destination-in';
+  cutCtx.filter = 'blur(2px)'; // soften the edge
+  cutCtx.drawImage(maskCanvas, 0, 0, vw, vh);
+  cutCtx.filter = 'none';
+  cutCtx.globalCompositeOperation = 'source-over';
+  const h = outH * cutSizeEl.value / 100, w = h * vw / vh;
+  const x = cutPos[0] * outW - w / 2, y = cutPos[1] * outH - h;
+  lastCutRect = { x, y, w, h };
+  vctx.save();
+  if (mir) { vctx.translate(2 * x + w, 0); vctx.scale(-1, 1); }
+  vctx.drawImage(cutCanvas, x, y, w, h);
+  vctx.restore();
+}
+// drag the cutout (when no drawing tool is active) on the preview or the floating preview
+function attachCutDrag(el) {
+  let grab = null;
+  el.addEventListener('pointerdown', e => {
+    if (tool || layoutEl.value !== 'cutout' || !lastCutRect) return;
+    const [x, y] = toCanvas(e, el), r = lastCutRect;
+    if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    grab = [x, y, ...cutPos];
+  });
+  el.addEventListener('pointermove', e => {
+    if (!grab) return;
+    const [x, y] = toCanvas(e, el);
+    cutPos = [grab[2] + (x - grab[0]) / outW, Math.min(1.5, Math.max(0.2, grab[3] + (y - grab[1]) / outH))];
+  });
+  const end = () => { grab = null; };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+cutSizeEl.oninput = () => { $('#cutv').textContent = cutSizeEl.value + '%'; };
+cutSizeEl.oninput();
+layoutEl.onchange = () => {
+  $('#cutbox').hidden = layoutEl.value !== 'cutout';
+  if (layoutEl.value === 'cutout') loadSegmenter();
+};
+layoutEl.onchange();
 
 // ---- drawing on the recording: pen, highlight, circle, arrow ----
 // Shapes live in output-canvas pixels and are drawn by compose(), so they are recorded.
@@ -564,6 +794,7 @@ function drawAnnotations() {
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
 $('#clearann').onclick = clearAnn;
 attachDraw(frame);
+attachCutDrag(frame);
 
 splitEl.oninput = () => { $('#splitv').textContent = splitEl.value + '%'; };
 autoEl.onchange = () => { splitEl.disabled = autoEl.checked; };
@@ -589,7 +820,9 @@ $('#addscreen').onclick = async () => {
     await scr.play();
     s.getVideoTracks()[0].onended = stopScreen; // browser's own "Stop sharing" button
     rmScreenBtn.disabled = false;
-    if (layoutEl.value === 'cam') layoutEl.value = 'split';
+    bgSrcEl.value = 'screen';
+    bgSrcEl.onchange();
+    if (layoutEl.value === 'cam') { layoutEl.value = 'split'; layoutEl.onchange(); }
     errEl.textContent = '';
   } catch (e) {
     if (e.name !== 'NotAllowedError') errEl.textContent = 'Screen share failed: ' + e.message;
@@ -722,6 +955,7 @@ const KEYS = {
   ArrowRight: COMMANDS.ahead, PageDown: COMMANDS.ahead,
   KeyR: COMMANDS.rec, KeyP: COMMANDS.pause,
   KeyC: clearAnn, Escape: () => setTool(null),
+  BracketLeft: prevSlide, BracketRight: nextSlide,
 };
 function onKey(e) {
   if (e.target.matches('textarea, input, select') || e.metaKey || e.ctrlKey) return;
@@ -785,6 +1019,7 @@ $('#float').onclick = async () => {
     mk(r2, label, () => setTool(tool === t ? null : t), t);
   }
   attachDraw(v);
+  attachCutDrag(v);
   setTool(tool);
   d.addEventListener('keydown', onKey);
   pip.addEventListener('pagehide', () => {

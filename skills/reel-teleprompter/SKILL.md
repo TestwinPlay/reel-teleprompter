@@ -1,6 +1,6 @@
 ---
 name: reel-teleprompter
-description: Launch a free, private browser teleprompter that records Instagram Reels, Shorts and TikToks (9:16, 4:5, 1:1, 16:9) from the laptop webcam, optionally with a shared screen or window in split screen, drawing tools, AI noise removal and a floating preview. Use when the user wants to record a reel or talking-head video, use a teleprompter, record their screen with their face, or says "record a reel about X", "open the teleprompter", "teleprompter for Instagram". Can also draft the script and preload it.
+description: Launch a free, private browser teleprompter that records Instagram Reels, Shorts and TikToks (9:16, 4:5, 1:1, 16:9) from the laptop webcam, optionally with a shared screen or window, or the user's own videos, images and PDFs, in split screen or behind a background-removed cutout of the user, plus drawing tools, AI noise removal and a floating preview. Use when the user wants to record a reel or talking-head video, use a teleprompter, record their screen with their face, or says "record a reel about X", "open the teleprompter", "teleprompter for Instagram". Can also draft the script and preload it.
 license: MIT OR Apache-2.0
 ---
 
@@ -54,6 +54,11 @@ When drafting a script for a Reel:
 - **Screen + face**: "Add screen / window", then a layout (split, face bubble). Auto
   split leaves no gap. When the screen is cropped, drag the yellow box on the screen
   map to choose the recorded part.
+- **Your files as background**: Background → "My files" → Add files (or drag files onto
+  the page): videos, images and PDFs play as a slideshow; Prev/Next or [ and ] keys.
+- **Cutout**: Layout → "Cutout: me over full background" removes the camera background
+  on-device; drag yourself on the preview to move, "Cutout size" to resize. Good light
+  and a plain wall behind the user give the cleanest edge.
 - **Drawing**: Pen, Highlight, Circle, Arrow draw onto the recording; C clears, Esc exits.
 - **Floating preview** (Chrome): an always-on-top window with the prompter, preview
   and record button. Share a single window, not the entire screen, so it is not recorded.

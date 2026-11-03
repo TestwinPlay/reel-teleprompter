@@ -26,10 +26,12 @@
     "dev": "wrangler dev",
     "deploy:staging": "wrangler deploy --env staging",
     "deploy:production": "wrangler deploy --env production",
-    "vendor": "mkdir -p skills/reel-teleprompter/app/vendor/noise && D=node_modules/@sapphi-red/web-noise-suppressor/dist && cp $D/index.js skills/reel-teleprompter/app/vendor/noise/index.js && cp $D/rnnoise/workletProcessor.js skills/reel-teleprompter/app/vendor/noise/rnnoiseWorklet.js && cp $D/rnnoise.wasm $D/rnnoise_simd.wasm skills/reel-teleprompter/app/vendor/noise/"
+    "vendor": "mkdir -p skills/reel-teleprompter/app/vendor/noise && D=node_modules/@sapphi-red/web-noise-suppressor/dist && cp $D/index.js skills/reel-teleprompter/app/vendor/noise/index.js && cp $D/rnnoise/workletProcessor.js skills/reel-teleprompter/app/vendor/noise/rnnoiseWorklet.js && cp $D/rnnoise.wasm $D/rnnoise_simd.wasm skills/reel-teleprompter/app/vendor/noise/ && mkdir -p skills/reel-teleprompter/app/vendor/mediapipe/wasm skills/reel-teleprompter/app/vendor/pdfjs && M=node_modules/@mediapipe/tasks-vision && cp $M/vision_bundle.mjs skills/reel-teleprompter/app/vendor/mediapipe/ && cp $M/wasm/vision_wasm_internal.js $M/wasm/vision_wasm_internal.wasm skills/reel-teleprompter/app/vendor/mediapipe/wasm/ && P=node_modules/pdfjs-dist && cp $P/build/pdf.min.mjs $P/build/pdf.worker.min.mjs skills/reel-teleprompter/app/vendor/pdfjs/ && cp -R $P/standard_fonts skills/reel-teleprompter/app/vendor/pdfjs/ && cp $P/LICENSE skills/reel-teleprompter/app/vendor/pdfjs/LICENSE && curl -fsSL -o skills/reel-teleprompter/app/vendor/mediapipe/selfie_segmenter.tflite https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite"
   },
   "devDependencies": {
+    "@mediapipe/tasks-vision": "^1.2.0",
     "@sapphi-red/web-noise-suppressor": "^0.4.1",
+    "pdfjs-dist": "^6.5.438",
     "wrangler": "^4.129.0"
   }
 }
